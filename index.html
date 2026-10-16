@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lletres Scroll</title>
+<style>
+:root{--bg:#f6f5f1;--fg:#1c1c1a;--mut:#77756e;--card:#fff;--line:#dcdad2;--acc:#d9531e;--accfg:#fff;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121211;--fg:#f0eee6;--mut:#9a978c;--card:#1d1d1b;--line:#33332f;--acc:#f0713b;--accfg:#121211;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#121211;--fg:#f0eee6;--mut:#9a978c;--card:#1d1d1b;--line:#33332f;--acc:#f0713b;--accfg:#121211;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding-bottom:60vh}
+main{max-width:820px;margin:0 auto;padding:12px 14px}
+.song{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:0 0 18px;padding:12px 14px}
+.song.active{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.head input.t{flex:1 1 180px;min-width:0;font-weight:700;font-size:20px;font-family:inherit;background:transparent;color:var(--fg);border:0;border-bottom:1px dashed var(--line);padding:4px 2px}
+.spd{display:flex;align-items:center;gap:6px;color:var(--mut);font-size:13px}
+.spd input[type=range]{width:110px;accent-color:var(--acc)}
+.spd b{min-width:48px;text-align:right;color:var(--fg);font-variant-numeric:tabular-nums}
+button{font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
+button:active{transform:scale(.97)}
+button.p{background:var(--acc);color:var(--accfg);border-color:var(--acc);font-weight:600}
+.tools{display:flex;gap:4px}
+textarea.ly{display:block;width:100%;min-height:120px;resize:none;overflow:hidden;background:transparent;color:var(--fg);border:0;outline:0;padding:4px 2px 20px;font-family:inherit;line-height:1.5;white-space:pre-wrap}
+textarea.ly:focus{background:color-mix(in srgb,var(--acc) 6%,transparent)}
+.add{width:100%;padding:12px;border-style:dashed}
+#bar{position:fixed;left:0;right:0;bottom:0;z-index:5;background:var(--card);border-top:1px solid var(--line);padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px))}
+#bar .in{max-width:820px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#st{flex:1 1 100%;font-size:13px;color:var(--mut)}
+#go{flex:1 1 auto;padding:10px 14px;font-size:16px}
+.hint{color:var(--mut);font-size:12px;text-align:center;margin:6px 0 0}
+</style>
+</head>
+<body>
+<main><div id="list"></div><div id="addwrap"></div><p class="hint">Espai: pausa / continua / següent cançó · ← → : velocitat · Esc: sortir del text</p></main>
+<div id="bar"><div class="in">
+<div id="st"></div>
+<button id="go" class="p"></button>
+<button id="prev" title="Cançó anterior">⏮</button>
+<button id="fm">A−</button><button id="fp">A+</button>
+</div></div>
+<script>
+var songs=[],cur=0,state='idle',fs=28,pos=0,last=0;
+try{var s=JSON.parse(localStorage.getItem('lletres')||'null');if(s&&s.songs){songs=s.songs;fs=s.fs||28}}catch(e){}
+if(!songs.length)songs=[{title:'Cançó 1',text:'',speed:30}];
+function save(){try{localStorage.setItem('lletres',JSON.stringify({songs:songs,fs:fs}))}catch(e){}}
+var $=function(i){return document.getElementById(i)};
+function el(t,c,tx){var e=document.createElement(t);if(c)e.className=c;if(tx!=null)e.textContent=tx;return e}
+function secs(){return document.querySelectorAll('.song')}
+function grow(t){t.style.height='auto';t.style.height=t.scrollHeight+'px'}
+function setSpeed(i,v){v=Math.max(5,Math.min(250,Math.round(v)));songs[i].speed=v;var s=secs()[i];if(s){s.querySelector('input[type=range]').value=v;s.querySelector('.spd b').textContent=v+' px/s'}save()}
+function change(){state='idle';cur=0;save();render()}
+function render(){
+  var L=$('list');L.innerHTML='';
+  songs.forEach(function(sg,i){
+    var S=el('section','song'+(i===cur&&state!=='idle'?' active':''));
+    var H=el('div','head');
+    var t=el('input','t');t.value=sg.title;t.placeholder='Títol';t.oninput=function(){sg.title=t.value;save();ui()};H.appendChild(t);
+    var sp=el('div','spd');
+    var m=el('button',null,'−');m.onclick=function(){setSpeed(i,sg.speed-5)};
+    var r=el('input');r.type='range';r.min=5;r.max=250;r.value=sg.speed;r.oninput=function(){setSpeed(i,+r.value)};
+    var p=el('button',null,'+');p.onclick=function(){setSpeed(i,sg.speed+5)};
+    sp.append(m,r,p,el('b',null,sg.speed+' px/s'));H.appendChild(sp);
+    var T=el('div','tools');
+    var f=el('button',null,'▶');f.title='Començar des d\'aquí';f.onclick=function(){startAt(i)};
+    var u=el('button',null,'↑');u.onclick=function(){if(i>0){songs.splice(i-1,0,songs.splice(i,1)[0]);change()}};
+    var d=el('button',null,'↓');d.onclick=function(){if(i<songs.length-1){songs.splice(i+1,0,songs.splice(i,1)[0]);change()}};
+    var x=el('button',null,'✕');x.onclick=function(){if(songs.length>1&&confirm('Esborrar "'+(sg.title||'cançó')+'"?')){songs.splice(i,1);change()}};
+    T.append(f,u,d,x);H.appendChild(T);
+    S.appendChild(H);
+    var ta=el('textarea','ly');ta.value=sg.text;ta.placeholder='Enganxa o escriu la lletra aquí…';ta.style.fontSize=fs+'px';
+    ta.oninput=function(){sg.text=ta.value;grow(ta);save()};
+    S.appendChild(ta);L.appendChild(S);
+  });
+  var A=$('addwrap');A.innerHTML='';
+  var a=el('button','add','+ Afegir cançó');a.onclick=function(){songs.push({title:'Cançó '+(songs.length+1),text:'',speed:30});save();render();window.scrollTo(0,document.body.scrollHeight)};A.appendChild(a);
+  document.querySelectorAll('textarea.ly').forEach(grow);
+  ui();
+}
+function topOf(i){var e=secs()[i];return e.getBoundingClientRect().top+window.scrollY-10}
+function end(i){var e=secs()[i];var b=e.getBoundingClientRect().bottom+window.scrollY;return Math.max(b-innerHeight*0.6,topOf(i)+40)}
+function mark(){secs().forEach(function(s,k){s.classList.toggle('active',k===cur&&state!=='idle')})}
+function startAt(i){if(document.activeElement)document.activeElement.blur();cur=i;state='playing';pos=topOf(i);window.scrollTo(0,pos);mark();ui()}
+function act(){
+  if(state==='idle'||state==='done'){startAt(0);return}
+  if(document.activeElement)document.activeElement.blur();
+  if(state==='playing'){state='paused'}
+  else if(state==='paused'){pos=window.scrollY;state='playing'}
+  else if(state==='waiting'){if(cur+1<songs.length){startAt(cur+1);return}state='done'}
+  ui();
+}
+function ui(){
+  var n=(songs[cur]&&songs[cur].title)||'';
+  $('go').textContent={idle:'▶ Començar',playing:'⏸ Pausa',paused:'▶ Continuar',waiting:'⏭ Següent cançó',done:'↺ Tornar a començar'}[state];
+  $('st').textContent={idle:songs.length+' cançons · llest',playing:'Reproduint · '+n+' ('+(cur+1)+'/'+songs.length+')',paused:'Pausat · '+n,waiting:'Final de "'+n+'" · prem Espai per continuar',done:'Fi del repertori'}[state];
+  mark();
+}
+function tick(t){
+  if(state==='playing'){
+    var dt=Math.min((t-last)/1000,0.1);pos+=songs[cur].speed*dt;window.scrollTo(0,pos);
+    if(pos>=end(cur)){state=cur>=songs.length-1?'done':'waiting';ui()}
+  }
+  last=t;requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+$('go').onclick=act;
+$('prev').onclick=function(){startAt(Math.max(0,cur-1))};
+$('fm').onclick=function(){fs=Math.max(14,fs-2);save();render()};
+$('fp').onclick=function(){fs=Math.min(80,fs+2);save();render()};
+window.addEventListener('resize',function(){document.querySelectorAll('textarea.ly').forEach(grow)});
+document.addEventListener('keydown',function(e){
+  var tg=e.target.tagName,typing=(tg==='INPUT'&&e.target.type!=='range')||tg==='TEXTAREA';
+  if(typing){if(e.code==='Escape')e.target.blur();return}
+  if(e.code==='Space'){e.preventDefault();if(tg==='BUTTON')e.target.blur();act()}
+  else if(e.code==='ArrowRight'){setSpeed(cur,songs[cur].speed+5)}
+  else if(e.code==='ArrowLeft'){setSpeed(cur,songs[cur].speed-5)}
+});
+['wheel','touchstart'].forEach(function(ev){window.addEventListener(ev,function(){if(state==='playing'){state='paused';ui()}},{passive:true})});
+render();
+</script>
+</body>
+</html>
